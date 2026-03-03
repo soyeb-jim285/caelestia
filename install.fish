@@ -90,7 +90,20 @@ begin # stderr from all commands is redirected to the log file
 
 # Variables
 set -q _flag_noconfirm && set noconfirm '--noconfirm'
-set -q _flag_aur_helper && set -l aur_helper $_flag_aur_helper || set -l aur_helper paru
+if set -q _flag_aur_helper
+    set -l aur_helper $_flag_aur_helper
+else if set -q _flag_noconfirm
+    set -l aur_helper paru
+else
+    log '[1] paru  [2] yay'
+    input 'Choose AUR helper: ' -n
+    set -l aur_choice (sh-read)
+    if test "$aur_choice" = 2
+        set -l aur_helper yay
+    else
+        set -l aur_helper paru
+    end
+end
 set -q XDG_CONFIG_HOME && set -l config $XDG_CONFIG_HOME || set -l config $HOME/.config
 set -q XDG_STATE_HOME && set -l state $XDG_STATE_HOME || set -l state $HOME/.local/state
 set -q XDG_DATA_HOME && set -l data $XDG_DATA_HOME || set -l data $HOME/.local/share
@@ -153,6 +166,12 @@ if ! pacman -Q $aur_helper &> /dev/null
 
     # Install
     sudo pacman -S --needed git base-devel $noconfirm
+
+    # Set rustup default toolchain (required to compile paru/yay)
+    if command -q rustup
+        rustup default stable
+    end
+
     cd /tmp
     git clone https://aur.archlinux.org/$aur_helper.git
     cd $aur_helper
@@ -194,6 +213,9 @@ else
             sudo systemctl disable $dm
         end
     end
+
+    # Install uwsm (required by greetd session launcher)
+    $aur_helper -S --needed uwsm $noconfirm
 
     # Write config and enable
     sudo mkdir -p /etc/greetd
@@ -270,6 +292,11 @@ if confirm-overwrite $config/hypr
     cp -r hypr $config/hypr
     hyprctl reload
 end
+
+# Create user hypr config stubs so Hyprland doesn't error on missing source files
+mkdir -p $config/caelestia
+touch -a $config/caelestia/hypr-vars.conf
+touch -a $config/caelestia/hypr-user.conf
 
 # Starship
 if confirm-overwrite $config/starship.toml
