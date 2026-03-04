@@ -3,6 +3,7 @@ BackgroundNormal=#00000000
 
 [General]
 TerminalApplication=kitty
+widgetStyle=kvantum
 
 [Icons]
 Theme=Tela-circle-dracula

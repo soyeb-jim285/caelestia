@@ -609,6 +609,22 @@ if confirm-overwrite $config/dolphinrc
     cp dolphin/dolphinstaterc $state/dolphinstaterc
     cp dolphin/kxmlgui5/dolphinui.rc $data/kxmlgui5/dolphin/dolphinui.rc
     cp dolphin/view_properties/global/.directory $data/dolphin/view_properties/global/.directory
+
+    # Install XDG applications menu (needed for Dolphin "Open With" without Plasma)
+    if ! test -f /etc/xdg/menus/applications.menu
+        log 'Installing applications.menu for Dolphin...'
+        sudo mkdir -p /etc/xdg/menus
+        sudo cp dolphin/applications.menu /etc/xdg/menus/applications.menu
+    end
+
+    # Rebuild KDE service cache so Dolphin's "Open With" can find apps
+    if command -q kbuildsycoca6
+        log 'Building KDE service cache (kbuildsycoca6)...'
+        kbuildsycoca6
+    else if command -q kbuildsycoca5
+        log 'Building KDE service cache (kbuildsycoca5)...'
+        kbuildsycoca5
+    end
 end
 
 # KDE globals (transparent view, kitty terminal, Papirus icons)
