@@ -6,6 +6,7 @@ argparse -n 'install.fish' -X 0 \
     'btop' \
     'neovim' \
     'tmux' \
+    'mpv' \
     'spotify' \
     'vscode=?!contains -- "$_flag_value" codium code' \
     'discord' \
@@ -19,7 +20,7 @@ or exit
 
 # Print help
 if set -q _flag_h
-    echo 'usage: ./install.sh [-h] [--noconfirm] [--btop] [--neovim] [--tmux] [--spotify] [--vscode] [--discord] [--zen] [--cursor] [--opencode] [--claude-code] [--aur-helper]'
+    echo 'usage: ./install.sh [-h] [--noconfirm] [--btop] [--neovim] [--tmux] [--mpv] [--spotify] [--vscode] [--discord] [--zen] [--cursor] [--opencode] [--claude-code] [--aur-helper]'
     echo
     echo 'options:'
     echo '  -h, --help                  show this help message and exit'
@@ -27,6 +28,7 @@ if set -q _flag_h
     echo '  --btop                      install btop (with --noconfirm)'
     echo '  --neovim                    install neovim (with --noconfirm)'
     echo '  --tmux                      install tmux (with --noconfirm)'
+    echo '  --mpv                       install mpv media player'
     echo '  --spotify                   install Spotify (Spicetify)'
     echo '  --vscode=[codium|code]      install VSCodium (or VSCode)'
     echo '  --discord                   install Discord (OpenAsar + Equicord)'
@@ -75,30 +77,25 @@ function select_optional -d 'Interactive multi-select TUI for optional packages'
         set -a checked 0
     end
 
-    # Draw the menu
-    function _draw_menu -V count -V items -V checked -V cursor
-        for i in (seq $count)
-            if test $i -eq $cursor
-                set_color --bold bryellow
-                printf '> '
-            else
-                printf '  '
-            end
-            if test $checked[$i] -eq 1
-                set_color --bold brgreen
-                printf '[x] '
-            else
-                set_color normal
-                printf '[ ] '
-            end
-            set_color normal
-            echo $items[$i]
-        end
-        printf '\n  (↑/↓ navigate, Space toggle, Enter confirm)'
-    end
+    # Note: terminal is in raw mode, so all output must use \r\n (not just \n)
 
-    log 'Select optional packages to install:'
-    _draw_menu
+    printf '  \e[36m:: Select optional packages to install:\e[0m\r\n'
+
+    # Initial draw
+    for i in (seq $count)
+        if test $i -eq $cursor
+            printf '\e[1;33m> '
+        else
+            printf '  '
+        end
+        if test $checked[$i] -eq 1
+            printf '\e[1;32m[x] '
+        else
+            printf '\e[0m[ ] '
+        end
+        printf '\e[0m%s\r\n' $items[$i]
+    end
+    printf '\r\n  (↑/↓ navigate, Space toggle, Enter confirm)'
 
     # Read keypresses via stty raw
     while true
@@ -128,10 +125,25 @@ function select_optional -d 'Interactive multi-select TUI for optional packages'
         # Redraw: move cursor up (count + 1 for the hint line) and clear
         printf '\e[%dA\r' (math $count + 1)
         for i in (seq (math $count + 1))
-            printf '\e[2K\n'
+            printf '\e[2K\r\n'
         end
         printf '\e[%dA\r' (math $count + 1)
-        _draw_menu
+
+        # Redraw menu
+        for i in (seq $count)
+            if test $i -eq $cursor
+                printf '\e[1;33m> '
+            else
+                printf '  '
+            end
+            if test $checked[$i] -eq 1
+                printf '\e[1;32m[x] '
+            else
+                printf '\e[0m[ ] '
+            end
+            printf '\e[0m%s\r\n' $items[$i]
+        end
+        printf '\r\n  (↑/↓ navigate, Space toggle, Enter confirm)'
     end
 
     # Collect selected items
@@ -141,15 +153,13 @@ function select_optional -d 'Interactive multi-select TUI for optional packages'
         end
     end
 
-    # Clear hint line and show summary
-    printf '\n'
+    # Clear hint line and show summary (still in raw mode)
+    printf '\r\n'
     if test (count $selected_optional) -eq 0
-        log 'No optional packages selected.'
+        printf '  \e[36m:: No optional packages selected.\e[0m\r\n'
     else
-        log "Selected: $selected_optional"
+        printf '  \e[36m:: Selected: %s\e[0m\r\n' "$selected_optional"
     end
-
-    functions -e _draw_menu
 end
 
 function confirm-overwrite -a path
@@ -183,6 +193,9 @@ mkdir -p (dirname $logfile)
 echo "=== Caelestia install log - $(date) ===" > $logfile
 
 begin # stderr from all commands is redirected to the log file
+
+# Save absolute repo path before any cd commands (status filename may be relative)
+set -l repo_dir (builtin realpath (dirname (status filename)))
 
 # Variables
 set -q _flag_noconfirm && set noconfirm '--noconfirm'
@@ -291,8 +304,8 @@ if ! pacman -Q $aur_helper &> /dev/null
     end
 end
 
-# Cd into dir
-cd (dirname (status filename)) || exit 1
+# Cd into repo dir
+cd $repo_dir || exit 1
 
 # Sync package database (required on fresh installs where the DB may be stale)
 log 'Syncing package database...'
@@ -605,7 +618,7 @@ if confirm-overwrite $config/kdeglobals
 end
 
 # Optional packages — TUI selection or flag-based (--noconfirm)
-set -l optional_items btop neovim tmux spotify 'vscode (codium)' 'vscode (code)' discord zen cursor opencode claude-code
+set -l optional_items btop neovim tmux mpv spotify 'vscode (codium)' 'vscode (code)' discord zen cursor opencode claude-code
 
 if set -q _flag_noconfirm
     # Auto-select based on CLI flags (no TUI)
@@ -613,6 +626,7 @@ if set -q _flag_noconfirm
     set -q _flag_btop && set -a selected_optional btop
     set -q _flag_neovim && set -a selected_optional neovim
     set -q _flag_tmux && set -a selected_optional tmux
+    set -q _flag_mpv && set -a selected_optional mpv
     set -q _flag_spotify && set -a selected_optional spotify
     if set -q _flag_vscode
         if test -n "$_flag_vscode"
@@ -668,6 +682,35 @@ if contains tmux $selected_optional
     end
 end
 
+# Mpv
+if contains mpv $selected_optional
+    log 'Installing mpv...'
+    $aur_helper -S --needed mpv mpv-mpris yt-dlp $noconfirm
+    $aur_helper -S --needed mpv-uosc mpv-thumbfast-git mpv-quality-menu-git $noconfirm
+
+    if confirm-overwrite $config/mpv
+        log 'Installing mpv config...'
+        mkdir -p $config/mpv/{scripts,script-opts,fonts}
+        cp mpv/mpv.conf mpv/input.conf $config/mpv/
+        cp mpv/script-opts/* $config/mpv/script-opts/
+
+        # uosc symlinks
+        ln -sf /usr/share/mpv/scripts/uosc $config/mpv/scripts/uosc
+        ln -sf /usr/share/mpv/fonts/uosc_icons.otf $config/mpv/fonts/
+        ln -sf /usr/share/mpv/fonts/uosc_textures.ttf $config/mpv/fonts/
+
+        # sponsorblock
+        log 'Installing mpv sponsorblock...'
+        curl -fsSL -o $config/mpv/scripts/sponsorblock.lua \
+            https://raw.githubusercontent.com/po5/mpv_sponsorblock/master/sponsorblock.lua
+        mkdir -p $config/mpv/scripts/sponsorblock_shared
+        curl -fsSL -o $config/mpv/scripts/sponsorblock_shared/main.lua \
+            https://raw.githubusercontent.com/po5/mpv_sponsorblock/master/sponsorblock_shared/main.lua
+        curl -fsSL -o $config/mpv/scripts/sponsorblock_shared/sponsorblock.py \
+            https://raw.githubusercontent.com/po5/mpv_sponsorblock/master/sponsorblock_shared/sponsorblock.py
+    end
+end
+
 # Spotify (Spicetify)
 if contains spotify $selected_optional
     log 'Installing spotify (spicetify)...'
@@ -711,6 +754,7 @@ if contains 'vscode (codium)' $selected_optional; or contains 'vscode (code)' $s
     # Install configs
     if confirm-overwrite $folder/settings.json && confirm-overwrite $folder/keybindings.json && confirm-overwrite $config/$prog-flags.conf
         log "Installing vs$prog config..."
+        mkdir -p $folder
         cp vscode/settings.json $folder/settings.json
         cp vscode/keybindings.json $folder/keybindings.json
         cp vscode/flags.conf $config/$prog-flags.conf
@@ -792,31 +836,15 @@ if contains claude-code $selected_optional
 end
 
 # Install quickshell overrides
-set -l qs_overrides $HOME/quickshell-overrides/caelestia
-set -l qs_config $config/quickshell/caelestia
+set -l qs_overrides quickshell-overrides
+set -l qs_config /etc/xdg/quickshell/caelestia
 
-if ! test -d $HOME/quickshell-overrides
-    log 'quickshell-overrides not found. Cloning...'
-    git clone https://github.com/soyeb-jim285/quickshell-overrides.git $HOME/quickshell-overrides 2>> $logfile
-end
-
-if ! test -d $HOME/quickshell-overrides
-    log 'Warning: failed to clone quickshell-overrides, skipping.'
-else if ! test -d $qs_overrides
-    log "Warning: quickshell-overrides cloned but '$qs_overrides' subdirectory not found, skipping."
-end
-
-if test -d $qs_overrides
-    if confirm-overwrite $qs_config
-        log 'Installing quickshell overrides...'
-        for file in (find $qs_overrides -type f)
-            set -l rel (string replace "$qs_overrides/" "" $file)
-            set -l target $qs_config/$rel
-            rm -rf $target
-            mkdir -p (dirname $target)
-            cp $file $target
-        end
-    end
+log 'Installing quickshell overrides...'
+for file in (find $qs_overrides -type f)
+    set -l rel (string replace "$qs_overrides/" "" $file)
+    set -l target $qs_config/$rel
+    sudo mkdir -p (dirname $target)
+    sudo cp -f $file $target
 end
 
 # Generate scheme stuff if needed
