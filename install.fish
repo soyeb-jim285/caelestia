@@ -3,6 +3,9 @@
 argparse -n 'install.fish' -X 0 \
     'h/help' \
     'noconfirm' \
+    'btop' \
+    'neovim' \
+    'tmux' \
     'spotify' \
     'vscode=?!contains -- "$_flag_value" codium code' \
     'discord' \
@@ -16,11 +19,14 @@ or exit
 
 # Print help
 if set -q _flag_h
-    echo 'usage: ./install.sh [-h] [--noconfirm] [--spotify] [--vscode] [--discord] [--zen] [--cursor] [--opencode] [--claude-code] [--aur-helper]'
+    echo 'usage: ./install.sh [-h] [--noconfirm] [--btop] [--neovim] [--tmux] [--spotify] [--vscode] [--discord] [--zen] [--cursor] [--opencode] [--claude-code] [--aur-helper]'
     echo
     echo 'options:'
     echo '  -h, --help                  show this help message and exit'
     echo '  --noconfirm                 do not confirm package installation'
+    echo '  --btop                      install btop (with --noconfirm)'
+    echo '  --neovim                    install neovim (with --noconfirm)'
+    echo '  --tmux                      install tmux (with --noconfirm)'
     echo '  --spotify                   install Spotify (Spicetify)'
     echo '  --vscode=[codium|code]      install VSCodium (or VSCode)'
     echo '  --discord                   install Discord (OpenAsar + Equicord)'
@@ -54,6 +60,96 @@ end
 
 function sh-read
     sh -c 'read a && echo -n "$a"' || exit 1
+end
+
+function select_optional -d 'Interactive multi-select TUI for optional packages'
+    # Usage: select_optional item1 item2 ...
+    # Sets global $selected_optional with chosen items
+    set -g selected_optional
+    set -l items $argv
+    set -l count (count $items)
+    set -l cursor 1
+    # All items start unchecked (0)
+    set -l checked
+    for i in (seq $count)
+        set -a checked 0
+    end
+
+    # Draw the menu
+    function _draw_menu -V count -V items -V checked -V cursor
+        for i in (seq $count)
+            if test $i -eq $cursor
+                set_color --bold bryellow
+                printf '> '
+            else
+                printf '  '
+            end
+            if test $checked[$i] -eq 1
+                set_color --bold brgreen
+                printf '[x] '
+            else
+                set_color normal
+                printf '[ ] '
+            end
+            set_color normal
+            echo $items[$i]
+        end
+        printf '\n  (↑/↓ navigate, Space toggle, Enter confirm)'
+    end
+
+    log 'Select optional packages to install:'
+    _draw_menu
+
+    # Read keypresses via stty raw
+    while true
+        # Read a single byte
+        set -l byte (dd bs=1 count=1 2>/dev/null | od -An -tx1 | string trim)
+
+        if test "$byte" = '1b' # Escape sequence
+            set -l b2 (dd bs=1 count=1 2>/dev/null | od -An -tx1 | string trim)
+            if test "$b2" = '5b' # CSI [
+                set -l b3 (dd bs=1 count=1 2>/dev/null | od -An -tx1 | string trim)
+                if test "$b3" = '41' # Up arrow
+                    test $cursor -gt 1 && set cursor (math $cursor - 1)
+                else if test "$b3" = '42' # Down arrow
+                    test $cursor -lt $count && set cursor (math $cursor + 1)
+                end
+            end
+        else if test "$byte" = '20' # Space - toggle
+            if test $checked[$cursor] -eq 0
+                set checked[$cursor] 1
+            else
+                set checked[$cursor] 0
+            end
+        else if test "$byte" = '0a' -o "$byte" = '0d' # Enter
+            break
+        end
+
+        # Redraw: move cursor up (count + 1 for the hint line) and clear
+        printf '\e[%dA\r' (math $count + 1)
+        for i in (seq (math $count + 1))
+            printf '\e[2K\n'
+        end
+        printf '\e[%dA\r' (math $count + 1)
+        _draw_menu
+    end
+
+    # Collect selected items
+    for i in (seq $count)
+        if test $checked[$i] -eq 1
+            set -a selected_optional $items[$i]
+        end
+    end
+
+    # Clear hint line and show summary
+    printf '\n'
+    if test (count $selected_optional) -eq 0
+        log 'No optional packages selected.'
+    else
+        log "Selected: $selected_optional"
+    end
+
+    functions -e _draw_menu
 end
 
 function confirm-overwrite -a path
@@ -197,6 +293,10 @@ end
 
 # Cd into dir
 cd (dirname (status filename)) || exit 1
+
+# Sync package database (required on fresh installs where the DB may be stale)
+log 'Syncing package database...'
+sudo pacman -Sy $noconfirm
 
 # Install metapackage for deps
 log 'Installing metapackage...'
@@ -458,33 +558,6 @@ if confirm-overwrite $config/uwsm
     cp -r uwsm $config/uwsm
 end
 
-# Btop
-if confirm-overwrite $config/btop
-    log 'Installing btop config...'
-    cp -r btop $config/btop
-end
-
-# Neovim
-if confirm-overwrite $config/nvim
-    log 'Installing neovim config...'
-    cp -r nvim $config/nvim
-end
-
-# Tmux
-if confirm-overwrite $config/tmux/tmux.conf
-    log 'Installing tmux config...'
-    mkdir -p $config/tmux
-    cp tmux/tmux.conf $config/tmux/tmux.conf
-end
-
-# TPM (tmux plugin manager)
-if ! test -d $config/tmux/plugins/tpm
-    log 'Installing TPM...'
-    git clone https://github.com/tmux-plugins/tpm $config/tmux/plugins/tpm
-    log 'Installing tmux plugins...'
-    $config/tmux/plugins/tpm/scripts/install_plugins.sh
-end
-
 # Kvantum
 mkdir -p $config/Kvantum
 if confirm-overwrite $config/Kvantum/kvantum.kvconfig
@@ -531,8 +604,72 @@ if confirm-overwrite $config/kdeglobals
     cp kdeglobals $config/kdeglobals
 end
 
-# Install spicetify
-if set -q _flag_spotify
+# Optional packages — TUI selection or flag-based (--noconfirm)
+set -l optional_items btop neovim tmux spotify 'vscode (codium)' 'vscode (code)' discord zen cursor opencode claude-code
+
+if set -q _flag_noconfirm
+    # Auto-select based on CLI flags (no TUI)
+    set -g selected_optional
+    set -q _flag_btop && set -a selected_optional btop
+    set -q _flag_neovim && set -a selected_optional neovim
+    set -q _flag_tmux && set -a selected_optional tmux
+    set -q _flag_spotify && set -a selected_optional spotify
+    if set -q _flag_vscode
+        if test -n "$_flag_vscode"
+            set -a selected_optional "vscode ($_flag_vscode)"
+        else
+            set -a selected_optional 'vscode (codium)'
+        end
+    end
+    set -q _flag_discord && set -a selected_optional discord
+    set -q _flag_zen && set -a selected_optional zen
+    set -q _flag_cursor && set -a selected_optional cursor
+    set -q _flag_opencode && set -a selected_optional opencode
+    set -q _flag_claude_code && set -a selected_optional claude-code
+else
+    # Interactive TUI
+    stty raw -echo
+    select_optional $optional_items
+    stty sane
+end
+
+# Install selected optional packages
+
+# Btop
+if contains btop $selected_optional
+    if confirm-overwrite $config/btop
+        log 'Installing btop config...'
+        cp -r btop $config/btop
+    end
+end
+
+# Neovim
+if contains neovim $selected_optional
+    if confirm-overwrite $config/nvim
+        log 'Installing neovim config...'
+        cp -r nvim $config/nvim
+    end
+end
+
+# Tmux
+if contains tmux $selected_optional
+    if confirm-overwrite $config/tmux/tmux.conf
+        log 'Installing tmux config...'
+        mkdir -p $config/tmux
+        cp tmux/tmux.conf $config/tmux/tmux.conf
+    end
+
+    # TPM (tmux plugin manager)
+    if ! test -d $config/tmux/plugins/tpm
+        log 'Installing TPM...'
+        git clone https://github.com/tmux-plugins/tpm $config/tmux/plugins/tpm
+        log 'Installing tmux plugins...'
+        $config/tmux/plugins/tpm/scripts/install_plugins.sh
+    end
+end
+
+# Spotify (Spicetify)
+if contains spotify $selected_optional
     log 'Installing spotify (spicetify)...'
 
     set -l has_spicetify (pacman -Q spicetify-cli 2> /dev/null)
@@ -556,12 +693,17 @@ if set -q _flag_spotify
     end
 end
 
-# Install vscode
-if set -q _flag_vscode
-    test "$_flag_vscode" = 'code' && set -l prog 'code' || set -l prog 'codium'
-    test "$_flag_vscode" = 'code' && set -l packages 'code' || set -l packages 'vscodium-bin' 'vscodium-bin-marketplace'
-    test "$_flag_vscode" = 'code' && set -l folder 'Code' || set -l folder 'VSCodium'
-    set -l folder $config/$folder/User
+# VSCode / VSCodium
+if contains 'vscode (codium)' $selected_optional; or contains 'vscode (code)' $selected_optional
+    set -l prog codium
+    set -l packages vscodium-bin vscodium-bin-marketplace
+    set -l vsc_folder VSCodium
+    if contains 'vscode (code)' $selected_optional
+        set prog code
+        set packages code
+        set vsc_folder Code
+    end
+    set -l folder $config/$vsc_folder/User
 
     log "Installing vs$prog..."
     $aur_helper -S --needed $packages $noconfirm
@@ -578,8 +720,8 @@ if set -q _flag_vscode
     end
 end
 
-# Install discord
-if set -q _flag_discord
+# Discord
+if contains discord $selected_optional
     log 'Installing discord...'
     $aur_helper -S --needed discord equicord-installer-bin $noconfirm
 
@@ -591,8 +733,8 @@ if set -q _flag_discord
     $aur_helper -Rns equicord-installer-bin $noconfirm
 end
 
-# Install zen
-if set -q _flag_zen
+# Zen browser
+if contains zen $selected_optional
     log 'Installing zen...'
     $aur_helper -S --needed zen-browser-bin $noconfirm
 
@@ -631,20 +773,20 @@ if set -q _flag_zen
     log 'Please install the CaelestiaFox extension from https://addons.mozilla.org/en-US/firefox/addon/caelestiafox if you have not already done so.'
 end
 
-# Install cursor
-if set -q _flag_cursor
+# Cursor
+if contains cursor $selected_optional
     log 'Installing Cursor AI editor...'
     $aur_helper -S --needed cursor-bin $noconfirm
 end
 
-# Install opencode
-if set -q _flag_opencode
+# OpenCode
+if contains opencode $selected_optional
     log 'Installing OpenCode...'
     $aur_helper -S --needed opencode $noconfirm
 end
 
-# Install claude-code
-if set -q _flag_claude_code
+# Claude Code
+if contains claude-code $selected_optional
     log 'Installing Claude Code...'
     $aur_helper -S --needed claude-code $noconfirm
 end
