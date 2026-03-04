@@ -90,20 +90,6 @@ begin # stderr from all commands is redirected to the log file
 
 # Variables
 set -q _flag_noconfirm && set noconfirm '--noconfirm'
-if set -q _flag_aur_helper
-    set -l aur_helper $_flag_aur_helper
-else if set -q _flag_noconfirm
-    set -l aur_helper paru
-else
-    log '[1] paru  [2] yay'
-    input 'Choose AUR helper: ' -n
-    set -l aur_choice (sh-read)
-    if test "$aur_choice" = 2
-        set -l aur_helper yay
-    else
-        set -l aur_helper paru
-    end
-end
 set -q XDG_CONFIG_HOME && set -l config $XDG_CONFIG_HOME || set -l config $HOME/.config
 set -q XDG_STATE_HOME && set -l state $XDG_STATE_HOME || set -l state $HOME/.local/state
 set -q XDG_DATA_HOME && set -l data $XDG_DATA_HOME || set -l data $HOME/.local/share
@@ -159,6 +145,27 @@ if ! set -q _flag_noconfirm
     end
 end
 
+# Detect or select AUR helper
+if set -q _flag_aur_helper
+    set aur_helper $_flag_aur_helper
+else if command -q paru
+    set aur_helper paru
+    log "Detected $aur_helper."
+else if command -q yay
+    set aur_helper yay
+    log "Detected $aur_helper."
+else if set -q _flag_noconfirm
+    set aur_helper paru
+else
+    log '[1] paru  [2] yay'
+    input 'Choose AUR helper: ' -n
+    set -l aur_choice (sh-read)
+    if test "$aur_choice" = 2
+        set aur_helper yay
+    else
+        set aur_helper paru
+    end
+end
 
 # Install AUR helper if not already installed
 if ! pacman -Q $aur_helper &> /dev/null
@@ -227,61 +234,70 @@ end
 # Detect and install Nvidia drivers
 if lspci -k | grep -qiE "(VGA|3D).*nvidia"
     log (string join '' 'Nvidia GPU detected: ' (lspci -k | grep -iE "(VGA|3D).*nvidia" | awk -F ': ' '{print $NF}' | head -1))
-    log 'Installing Nvidia drivers...'
 
-    # Kernel headers for all running kernels
-    set -l kbases (string match -r '.*' /usr/lib/modules/*/pkgbase 2>/dev/null)
-    if test (count $kbases) -eq 0
-        log 'Warning: no kernel pkgbase files found in /usr/lib/modules — skipping header install.'
+    # Check if Nvidia is already fully set up
+    if pacman -Q nvidia-dkms nvidia-utils egl-wayland &>/dev/null
+        and grep -q 'nvidia' /etc/mkinitcpio.conf 2>/dev/null
+        and test -f /etc/modprobe.d/nvidia.conf
+        and grep -q 'modeset=1' /etc/modprobe.d/nvidia.conf 2>/dev/null
+        log 'Nvidia drivers already fully set up, skipping.'
     else
-        for kbase in $kbases
-            if test -f $kbase
-                set -l hdr_pkg (cat $kbase)-headers
-                log "Installing kernel headers: $hdr_pkg"
-                $aur_helper -S --needed $hdr_pkg $noconfirm 2>> $logfile
+        log 'Installing Nvidia drivers...'
+
+        # Kernel headers for all running kernels
+        set -l kbases (string match -r '.*' /usr/lib/modules/*/pkgbase 2>/dev/null)
+        if test (count $kbases) -eq 0
+            log 'Warning: no kernel pkgbase files found in /usr/lib/modules — skipping header install.'
+        else
+            for kbase in $kbases
+                if test -f $kbase
+                    set -l hdr_pkg (cat $kbase)-headers
+                    log "Installing kernel headers: $hdr_pkg"
+                    $aur_helper -S --needed $hdr_pkg $noconfirm 2>> $logfile
+                end
             end
         end
-    end
 
-    # Driver + Wayland support packages
-    log 'Installing nvidia-dkms, nvidia-utils, egl-wayland...'
-    $aur_helper -S --needed nvidia-dkms nvidia-utils egl-wayland $noconfirm 2>> $logfile
+        # Driver + Wayland support packages
+        log 'Installing nvidia-dkms, nvidia-utils, egl-wayland...'
+        $aur_helper -S --needed nvidia-dkms nvidia-utils egl-wayland $noconfirm 2>> $logfile
 
-    # Wait for DKMS to finish building the nvidia module before running mkinitcpio
-    log 'Running dkms autoinstall to build nvidia kernel modules...'
-    if ! sudo dkms autoinstall 2>> $logfile
-        log 'Warning: dkms autoinstall reported errors — check log for details.'
-    end
-
-    # Verify the module was actually built before touching mkinitcpio
-    if ! sudo modinfo nvidia &>> $logfile
-        log 'Warning: nvidia module not found after DKMS build. Skipping mkinitcpio step to avoid a broken initramfs.'
-        log 'You may need to reboot and re-run this script, or install the correct kernel headers manually.'
-    else
-        # Early module loading (needed for Wayland DRM)
-        if ! grep -q 'nvidia' /etc/mkinitcpio.conf
-            log 'Adding nvidia modules to mkinitcpio.conf...'
-            sudo sed -i '/MODULES=/ s/)$/ nvidia nvidia_modeset nvidia_uvm nvidia_drm)/' /etc/mkinitcpio.conf
-            log 'Regenerating initramfs (mkinitcpio -P)...'
-            sudo mkinitcpio -P 2>> $logfile
+        # Wait for DKMS to finish building the nvidia module before running mkinitcpio
+        log 'Running dkms autoinstall to build nvidia kernel modules...'
+        if ! sudo dkms autoinstall 2>> $logfile
+            log 'Warning: dkms autoinstall reported errors — check log for details.'
         end
-    end
 
-    # DRM modeset kernel parameter
-    if ! test -f /etc/modprobe.d/nvidia.conf; or ! grep -q 'modeset=1' /etc/modprobe.d/nvidia.conf
-        log 'Setting nvidia-drm modeset=1...'
-        echo 'options nvidia-drm modeset=1 fbdev=1' | sudo tee -a /etc/modprobe.d/nvidia.conf >> $logfile
-    end
+        # Verify the module was actually built before touching mkinitcpio
+        if ! sudo modinfo nvidia &>> $logfile
+            log 'Warning: nvidia module not found after DKMS build. Skipping mkinitcpio step to avoid a broken initramfs.'
+            log 'You may need to reboot and re-run this script, or install the correct kernel headers manually.'
+        else
+            # Early module loading (needed for Wayland DRM)
+            if ! grep -q 'nvidia' /etc/mkinitcpio.conf
+                log 'Adding nvidia modules to mkinitcpio.conf...'
+                sudo sed -i '/MODULES=/ s/)$/ nvidia nvidia_modeset nvidia_uvm nvidia_drm)/' /etc/mkinitcpio.conf
+                log 'Regenerating initramfs (mkinitcpio -P)...'
+                sudo mkinitcpio -P 2>> $logfile
+            end
+        end
 
-    # Source nvidia.conf in Hyprland via user config
-    set -l user_conf $HOME/.config/caelestia/hypr-user.conf
-    mkdir -p (dirname $user_conf)
-    touch -a $user_conf
-    if ! grep -q 'nvidia.conf' $user_conf
-        echo 'source = $hl/nvidia.conf' >> $user_conf
-    end
+        # DRM modeset kernel parameter
+        if ! test -f /etc/modprobe.d/nvidia.conf; or ! grep -q 'modeset=1' /etc/modprobe.d/nvidia.conf
+            log 'Setting nvidia-drm modeset=1...'
+            echo 'options nvidia-drm modeset=1 fbdev=1' | sudo tee -a /etc/modprobe.d/nvidia.conf >> $logfile
+        end
 
-    log 'Nvidia setup complete.'
+        # Source nvidia.conf in Hyprland via user config
+        set -l user_conf $HOME/.config/caelestia/hypr-user.conf
+        mkdir -p (dirname $user_conf)
+        touch -a $user_conf
+        if ! grep -q 'nvidia.conf' $user_conf
+            echo 'source = $hl/nvidia.conf' >> $user_conf
+        end
+
+        log 'Nvidia setup complete.'
+    end
 else
     log 'No Nvidia GPU detected, skipping driver installation.'
 end
