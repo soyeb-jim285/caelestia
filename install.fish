@@ -314,6 +314,100 @@ mkdir -p $config/caelestia
 touch -a $config/caelestia/hypr-vars.conf
 touch -a $config/caelestia/hypr-user.conf
 
+# Monitor layout configuration
+set -l user_conf $config/caelestia/hypr-user.conf
+
+if command -q hyprctl && hyprctl monitors -j &>/dev/null
+    # Hyprland is running — offer to save current layout
+    set -l mon_json (hyprctl monitors -j 2>/dev/null)
+    set -l mon_count (echo $mon_json | jq 'length')
+
+    if test "$mon_count" -gt 0
+        log 'Detected monitor layout:'
+        for i in (seq 0 (math $mon_count - 1))
+            set -l name (echo $mon_json | jq -r ".[$i].name")
+            set -l width (echo $mon_json | jq -r ".[$i].width")
+            set -l height (echo $mon_json | jq -r ".[$i].height")
+            set -l rate (echo $mon_json | jq -r ".[$i].refreshRate" | cut -d. -f1)
+            set -l x (echo $mon_json | jq -r ".[$i].x")
+            set -l y (echo $mon_json | jq -r ".[$i].y")
+            set -l scale (echo $mon_json | jq -r ".[$i].scale")
+            set -l transform (echo $mon_json | jq -r ".[$i].transform")
+
+            if test "$transform" != "0"
+                log "  $name: {$width}x{$height}@{$rate}Hz at {$x},{$y} scale=$scale transform=$transform (portrait)"
+            else
+                log "  $name: {$width}x{$height}@{$rate}Hz at {$x},{$y} scale=$scale"
+            end
+        end
+
+        set -l save_monitors yes
+        if ! set -q _flag_noconfirm
+            input 'Save this monitor layout to hypr-user.conf? [Y/n] ' -n
+            set -l confirm (sh-read)
+            if test "$confirm" = 'n' -o "$confirm" = 'N'
+                set save_monitors no
+            end
+        end
+
+        if test "$save_monitors" = yes
+            log 'Saving monitor layout...'
+            sed -i '/^monitor\s*=/d' $user_conf
+
+            for i in (seq 0 (math $mon_count - 1))
+                set -l name (echo $mon_json | jq -r ".[$i].name")
+                set -l width (echo $mon_json | jq -r ".[$i].width")
+                set -l height (echo $mon_json | jq -r ".[$i].height")
+                set -l rate (echo $mon_json | jq -r ".[$i].refreshRate" | cut -d. -f1)
+                set -l x (echo $mon_json | jq -r ".[$i].x")
+                set -l y (echo $mon_json | jq -r ".[$i].y")
+                set -l scale (echo $mon_json | jq -r ".[$i].scale")
+                set -l transform (echo $mon_json | jq -r ".[$i].transform")
+
+                if test "$transform" != "0"
+                    echo "monitor = $name, {$width}x{$height}@$rate, {$x}x{$y}, $scale, transform, $transform" >> $user_conf
+                else
+                    echo "monitor = $name, {$width}x{$height}@$rate, {$x}x{$y}, $scale" >> $user_conf
+                end
+            end
+
+            log 'Monitor layout saved.'
+        end
+    end
+else
+    # Hyprland not running — offer preset monitor configs
+    log 'Hyprland is not running. Choose a monitor configuration:'
+    log '[1] Default (auto-detect all monitors)'
+    log '    monitor = , preferred, auto, 1'
+    log "[2] Author's config (eDP-1 + HDMI portrait)"
+    log '    monitor = eDP-1, 2560x1600@120, 0x0, 1.60'
+    log '    monitor = HDMI-A-1, 1920x1080@60, 1600x-920, 1.00, transform, 3'
+    log '    WARNING: If you are not the author, this will likely break your monitor layout!'
+    log '[3] Skip (configure manually later in ~/.config/caelestia/hypr-user.conf)'
+
+    set -l mon_choice 1
+    if set -q _flag_noconfirm
+        set mon_choice 1
+    else
+        input 'Choose [1/2/3]: ' -n
+        set mon_choice (sh-read)
+    end
+
+    sed -i '/^monitor\s*=/d' $user_conf
+
+    switch "$mon_choice"
+        case 1
+            log 'Applying default monitor config...'
+            echo 'monitor = , preferred, auto, 1' >> $user_conf
+        case 2
+            log "Applying author's monitor config..."
+            echo 'monitor = eDP-1, 2560x1600@120, 0x0, 1.60' >> $user_conf
+            echo 'monitor = HDMI-A-1, 1920x1080@60, 1600x-920, 1.00, transform, 3' >> $user_conf
+        case 3 '*'
+            log 'Skipping monitor config.'
+    end
+end
+
 # Starship
 if confirm-overwrite $config/starship.toml
     log 'Installing starship config...'
@@ -579,10 +673,23 @@ if ! test -f $state/caelestia/scheme.json
     hyprctl reload
 end
 
-# Start the shell (only if not already running)
-if ! pgrep -x qs > /dev/null
-    caelestia shell -d > /dev/null
+# Set default wallpaper if none is set
+if ! test -f $state/caelestia/wallpaper/path.txt
+    set -l wallpapers_dir $HOME/Pictures/Wallpapers
+    set -l default_wall (pwd)/wallpapers/default.jpg
+
+    # Copy bundled default to wallpapers dir
+    mkdir -p $wallpapers_dir
+    cp -n $default_wall $wallpapers_dir/ 2>/dev/null
+
+    log 'Setting default wallpaper...'
+    caelestia wallpaper -f $wallpapers_dir/default.jpg
 end
+
+# (Re)start the shell
+pkill -x qs 2> /dev/null
+sleep .5
+caelestia shell -d > /dev/null
 
 log 'Done!'
 log "Install log written to: $logfile"

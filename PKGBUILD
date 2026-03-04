@@ -16,7 +16,8 @@ depends=('caelestia-cli' 'caelestia-shell'
          'papirus-icon-theme' 'tela-circle-icon-theme-dracula' 'kvantum'
          'qt5ct-kde' 'qt6ct-kde' 'ttf-jetbrains-mono-nerd'
          'dolphin' 'greetd' 'greetd-tuigreet'
-         'gnome-keyring' 'polkit-gnome')
+         'gnome-keyring' 'polkit-gnome'
+         'sweet-cursors-hyprcursor-git')
 optdepends=('spotify: music player'
             'vscode: code editor'
             'zen-browser-bin: web browser (default browser)'
