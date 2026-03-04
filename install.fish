@@ -205,6 +205,13 @@ if test $aur_helper = yay
 else
     $aur_helper -Ui $noconfirm
 end
+
+if test $status -ne 0
+    log 'ERROR: Metapackage installation failed. Cannot continue without dependencies.'
+    log 'Check the log for details and try running the installer again.'
+    exit 1
+end
+
 fish -c 'rm -f caelestia-meta-*.pkg.tar.zst' 2> /dev/null
 
 # Setup greetd login manager
@@ -417,10 +424,14 @@ end
 # Maple Mono NF (custom build, bundled in repo)
 set -l font_dir $HOME/.local/share/fonts/MapleMono-NF
 if ! test -d $font_dir
-    log 'Installing Maple Mono NF fonts...'
-    mkdir -p $font_dir
-    cp fonts/MapleMono-NF/*.ttf $font_dir/
-    fc-cache -f $font_dir
+    if test -f fonts/MapleMono-NF/MapleMono-NF-Regular.ttf
+        log 'Installing Maple Mono NF fonts...'
+        mkdir -p $font_dir
+        cp fonts/MapleMono-NF/*.ttf $font_dir/
+        fc-cache -f $font_dir
+    else
+        log 'Warning: Maple Mono NF font files not found, skipping.'
+    end
 end
 
 # Kitty
@@ -506,7 +517,7 @@ end
 if confirm-overwrite $config/dolphinrc
     log 'Installing dolphin configs...'
     cp dolphinrc $config/dolphinrc
-    xdg-mime default org.kde.dolphin.desktop inode/directory
+    command -q xdg-mime && xdg-mime default org.kde.dolphin.desktop inode/directory
     rm -rf $state/dolphinstaterc $data/kxmlgui5/dolphin/dolphinui.rc $data/dolphin/view_properties/global/.directory
     mkdir -p $state $data/kxmlgui5/dolphin $data/dolphin/view_properties/global
     cp dolphin/dolphinstaterc $state/dolphinstaterc
