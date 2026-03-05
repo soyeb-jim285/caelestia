@@ -325,9 +325,9 @@ sudo pacman -Sy --noconfirm
 # Install metapackage for deps
 log 'Installing metapackage...'
 if test $aur_helper = yay
-    $aur_helper -Bi . --noconfirm
+    $aur_helper -Bi . --noconfirm --answeredit None --answerclean None --answerdiff None
 else
-    $aur_helper -Ui --noconfirm
+    $aur_helper -Ui --noconfirm --skipreview
 end
 
 if test $status -ne 0
@@ -714,7 +714,11 @@ end
 
 if test (count $opt_pkgs) -gt 0
     log 'Installing optional packages...'
-    $aur_helper -S --needed $opt_pkgs --noconfirm
+    if test $aur_helper = yay
+        $aur_helper -S --needed $opt_pkgs --noconfirm --answeredit None --answerclean None --answerdiff None
+    else
+        $aur_helper -S --needed $opt_pkgs --noconfirm --skipreview
+    end
 end
 
 # Configure selected optional packages
