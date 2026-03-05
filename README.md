@@ -1,144 +1,142 @@
-# caelestia
+# caelestia (fork)
 
-This is the main repo of the caelestia dots and contains the user configs for
-apps. This repo also includes an install script to install the entire dots.
+A personalized fork of [caelestia-dots/caelestia](https://github.com/caelestia-dots/caelestia) with an overhauled installer, additional app configs, and various fixes.
+
+## What's different from upstream
+
+### Overhauled Installer
+
+- Interactive TUI for selecting optional packages (arrow keys + space to toggle)
+- Automatic Nvidia GPU detection and env setup at session startup (`uwsm/env.d/01-gpu.sh`)
+- Hyprland `nvidia.conf` with proper env vars and `no_hardware_cursors`
+- `greetd` + `tuigreet` login manager setup out of the box
+- Batched optional package installs with no invisible prompts
+- Install logging to file
+- Auto-clones and applies quickshell overrides
+- Fixes for fresh installs: monitor config, cursor theme, wallpaper, shell restart
+
+### New App Configs
+
+- **Kitty** terminal (replaces foot) with Maple Mono NF, beam cursor, 0.6 opacity
+- **Neovim** with LazyVim setup
+- **tmux** with TPM and plugins
+- **mpv** media player with custom keybinds, uosc, and thumbfast
+- **Dolphin** file manager (replaces Thunar) with panel layout, kdeglobals, and view properties
+- **btop** resource monitor
+
+### Theming Changes
+
+- Dracula Kvantum theme (replaces Catppuccin)
+- Tela-circle-dracula icon theme
+- Sweet-cursors-hyprcursor cursor theme
+- Maple Mono NF font bundled (4 variants, no AUR dependency)
+- qt5ct/qt6ct configured with Kvantum style
+- Shadows disabled, tighter gaps (`6`/`5`/`8`), opaque windows by default
+- Thinner window borders (`1px` vs `3px`)
+
+### Input Changes
+
+- Caps Lock remapped to Escape (`caps:escape`)
+
+### Extra Install Flags
+
+- `--cursor` - Cursor AI editor
+- `--opencode` - OpenCode AI CLI
+- `--claude-code` - Claude Code CLI
+- `--neovim`, `--tmux`, `--mpv`, `--btop`
+
+### Other Changes
+
+- Quickshell overrides: custom status icons bar and network speed widget
+- Custom starship prompt config
+- Zen browser set as default on install
+- Monitor rotation toggle script (`hypr/scripts/toggle-monitor-rotation.sh`)
+- Screenshots now copy to clipboard by default
+- fish config: `~/.local/bin` and `~/.npm-global/bin` added to PATH
+- Nautilus transparency rule (0.95 opacity)
 
 ## Installation
 
-Simply clone this repo and run the install script (you need
-[`fish`](https://github.com/fish-shell/fish-shell) installed).
+Clone and run the install script (requires [`fish`](https://github.com/fish-shell/fish-shell)):
 
 > [!WARNING]
-> The install script symlinks all configs into place, so you CANNOT
-> move/remove the repo folder once you run the install script. If
-> you do, most apps will not behave properly and some (e.g. Hyprland)
-> will fail to start completely. I recommend cloning the repo to
-> `~/.local/share/caelestia`.
-
-The install script has some options for installing configs for some apps.
-
-```
-$ ./install.fish -h
-usage: ./install.sh [-h] [--noconfirm] [--spotify] [--vscode] [--discord] [--aur-helper]
-
-options:
-  -h, --help                  show this help message and exit
-  --noconfirm                 do not confirm package installation
-  --spotify                   install Spotify (Spicetify)
-  --vscode=[codium|code]      install VSCodium (or VSCode)
-  --discord                   install Discord (OpenAsar + Equicord)
-  --zen                       install Zen browser
-  --aur-helper=[yay|paru]     the AUR helper to use
-```
-
-For example:
+> The install script symlinks configs into place -- do NOT move/remove the repo
+> folder afterwards. Recommended location: `~/.local/share/caelestia`.
 
 ```sh
-git clone https://github.com/caelestia-dots/caelestia.git ~/.local/share/caelestia
+git clone https://github.com/soyeb-jim285/caelestia.git ~/.local/share/caelestia
 ~/.local/share/caelestia/install.fish
 ```
 
-### Manual installation
+### Options
 
-Dependencies:
-
--   hyprland
--   xdg-desktop-portal-hyprland
--   xdg-desktop-portal-gtk
--   hyprpicker
--   wl-clipboard
--   cliphist
--   inotify-tools
--   app2unit
--   wireplumber
--   trash-cli
--   foot
--   fish
--   fastfetch
--   starship
--   btop
--   jq
--   eza
--   adw-gtk-theme
--   papirus-icon-theme
--   qt5ct-kde
--   qt6ct-kde
--   ttf-jetbrains-mono-nerd
-
-Install all dependencies and follow the installation guides of the
-[shell](https://github.com/caelestia-dots/shell) and [cli](https://github.com/caelestia-dots/cli)
-to install them.
-
-> [!TIP]
-> If on Arch or an Arch-based distro, there is a meta package available [in this repository](PKGBUILD)
-> that pulls in all dependencies. It can be installed through the install script, makepkg/pacman, yay,
-> paru, or your preferred AUR helper.
-
-Then copy or symlink the `hypr`, `foot`, `fish`, `fastfetch`, `uwsm` and `btop` folders to the
-`$XDG_CONFIG_HOME` (usually `~/.config`) directory. e.g. `hypr -> ~/.config/hypr`.
-Copy `starship.toml` to `$XDG_CONFIG_HOME/starship.toml`.
-
-#### Installing Spicetify configs:
-
-Follow the Spicetify [installation instructions](https://spicetify.app/docs/advanced-usage/installation),
-copy or symlink the `spicetify` folder to `$XDG_CONFIG_HOME/spicetify` and run
-
-```sh
-spicetify config current_theme caelestia color_scheme caelestia custom_apps marketplace
-spicetify apply
 ```
-
-#### Installing VSCode/VSCodium configs:
-
-Install VSCode or VSCodium, then copy or symlink `vscode/settings.json` and
-`vscode/keybindings.json` into the `$XDG_CONFIG_HOME/Code/User` (or `$XDG_CONFIG_HOME/VSCodium/User`
-if using VSCodium) folder. Then copy or symlink `vscode/flags.conf` to `$XDG_CONFIG_HOME/code-flags.conf`
-(or `$XDG_CONFIG_HOME/codium-flags.conf` if using VSCodium).
-
-Finally, install the extension VSIX from `vscode/caelestia-vscode-integration`.
-
-```sh
-# Use `codium` if using VSCodium
-code --install-extension vscode/caelestia-vscode-integration/caelestia-vscode-integration-*.vsix
+usage: ./install.fish [-h] [--noconfirm] [--btop] [--neovim] [--tmux] [--mpv]
+                      [--spotify] [--vscode] [--discord] [--zen] [--cursor]
+                      [--opencode] [--claude-code] [--aur-helper=[yay|paru]]
 ```
-
-#### Installing Zen Browser configs:
-
-Install Zen Browser, then copy or symlink `zen/userChrome.css` to the `chrome` folder in your
-profile of choice in `~/.zen`. e.g. `zen/userChrome.css -> ~/.zen/<profile>/chrome/userChrome.css`.
-
-Now install the native app by copying `zen/native_app/manifest.json` to
-`~/.mozilla/native-messaging-hosts/caelestiafox.json` and replacing the `{{ $lib }}` string in it
-with the absolute path of `~/.local/lib/caelestia` (this must be the absolute path, e.g.
-`/home/user/.local/lib/caelestia`). Then copy or symlink `zen/native_app/app.fish` to
-`~/.local/lib/caelestia/caelestiafox`.
-
-Finally, install the CaelestiaFox extension from [here](https://addons.mozilla.org/en-US/firefox/addon/caelestiafox).
 
 ## Updating
 
-Simply run `yay` to update the AUR packages, then `cd` into the repo directory and run `git pull` to update the configs.
+```sh
+cd ~/.local/share/caelestia
+git pull
+```
 
-## Usage
+## Keybinds
 
-> [!NOTE]
-> These dots do not contain a login manager (for now), so you must install a
-> login manager yourself unless you want to log in from a TTY. I recommend
-> [`greetd`](https://sr.ht/~kennylevinsen/greetd) with
-> [`tuigreet`](https://github.com/apognu/tuigreet), however you can use
-> any login manager you want.
+### Apps
 
-There aren't really any usage instructions... these are a set of dotfiles.
+| Keybind | Action |
+|---------|--------|
+| `Super + Return` | Open terminal (kitty) |
+| `Super + W` | Open browser (zen) |
+| `Super + C` | Open editor (codium) |
+| `Super + E` | Open file explorer (dolphin) |
+| `Super + G` | Open GitHub Desktop |
 
-Here's a list of useful keybinds though:
+### Window Management
 
--   `Super` - open launcher
--   `Super` + `#` - switch to workspace `#`
--   `Super` `Alt` + `#` - move window to workspace `#`
--   `Super` + `T` - open terminal (foot)
--   `Super` + `W` - open browser (zen)
--   `Super` + `C` - open IDE (vscodium)
--   `Super` + `S` - toggle special workspace or close current special workspace
--   `Ctrl` `Alt` + `Delete` - open session menu
--   `Ctrl` `Super` + `Space` - toggle media play state
--   `Ctrl` `Super` `Alt` + `R` - restart the shell
+| Keybind | Action |
+|---------|--------|
+| `Super + Arrow Keys` | Move focus |
+| `Super + Shift + Arrow Keys` | Move window |
+| `Super + -/=` | Resize split ratio |
+| `Super + F` | Fullscreen |
+| `Super + Q` | Close window |
+
+### Workspaces
+
+| Keybind | Action |
+|---------|--------|
+| `Super` | Open launcher |
+| `Super + #` | Switch to workspace # |
+| `Super + Alt + #` | Move window to workspace # |
+| `Super + S` | Toggle special workspace |
+| `Super + Mouse Scroll` | Switch workspace |
+
+### Media & Utilities
+
+| Keybind | Action |
+|---------|--------|
+| `Ctrl + Super + Space` | Toggle media play/pause |
+| `Ctrl + Super + =/−` | Next/previous track |
+| `Print` | Screenshot (full screen) |
+| `Super + Shift + S` | Screenshot region (freeze) |
+| `Super + Alt + R` | Record screen with sound |
+| `Super + Shift + C` | Color picker |
+| `Super + V` | Clipboard history |
+| `Super + .` | Emoji picker |
+
+### Session
+
+| Keybind | Action |
+|---------|--------|
+| `Ctrl + Alt + Delete` | Session menu |
+| `Super + Shift + L` | Suspend |
+| `Ctrl + Super + Shift + R` | Kill shell |
+| `Ctrl + Super + Alt + R` | Restart shell |
+
+## Credits
+
+Based on [caelestia-dots](https://github.com/caelestia-dots/caelestia) by the original authors.
