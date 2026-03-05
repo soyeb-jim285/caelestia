@@ -307,6 +307,17 @@ end
 # Cd into repo dir
 cd $repo_dir || exit 1
 
+# Refresh mirrorlist (stale mirrors on fresh installs cause download failures)
+if command -q reflector
+    log 'Refreshing mirrorlist with reflector...'
+    sudo reflector --age 12 --protocol https --sort rate --save /etc/pacman.d/mirrorlist
+else
+    log 'reflector not found, installing...'
+    sudo pacman -S --needed reflector --noconfirm
+    log 'Refreshing mirrorlist with reflector...'
+    sudo reflector --age 12 --protocol https --sort rate --save /etc/pacman.d/mirrorlist
+end
+
 # Sync package database (required on fresh installs where the DB may be stale)
 log 'Syncing package database...'
 sudo pacman -Sy --noconfirm
