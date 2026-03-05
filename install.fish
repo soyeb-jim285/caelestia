@@ -281,7 +281,7 @@ if ! pacman -Q $aur_helper &> /dev/null
     log "$aur_helper not installed. Installing..."
 
     # Install
-    sudo pacman -S --needed git base-devel $noconfirm
+    sudo pacman -S --needed git base-devel --noconfirm
 
     # Set rustup default toolchain (required to compile paru/yay)
     if command -q rustup
@@ -309,14 +309,14 @@ cd $repo_dir || exit 1
 
 # Sync package database (required on fresh installs where the DB may be stale)
 log 'Syncing package database...'
-sudo pacman -Sy $noconfirm
+sudo pacman -Sy --noconfirm
 
 # Install metapackage for deps
 log 'Installing metapackage...'
 if test $aur_helper = yay
-    $aur_helper -Bi . $noconfirm
+    $aur_helper -Bi . --noconfirm
 else
-    $aur_helper -Ui $noconfirm
+    $aur_helper -Ui --noconfirm
 end
 
 if test $status -ne 0
@@ -342,7 +342,7 @@ else
     end
 
     # Install uwsm (required by greetd session launcher)
-    $aur_helper -S --needed uwsm $noconfirm
+    $aur_helper -S --needed uwsm --noconfirm
 
     # Write config and enable
     sudo mkdir -p /etc/greetd
@@ -373,14 +373,14 @@ if lspci -k | grep -qiE "(VGA|3D).*nvidia"
                 if test -f $kbase
                     set -l hdr_pkg (cat $kbase)-headers
                     log "Installing kernel headers: $hdr_pkg"
-                    $aur_helper -S --needed $hdr_pkg $noconfirm 2>> $logfile
+                    $aur_helper -S --needed $hdr_pkg --noconfirm 2>> $logfile
                 end
             end
         end
 
         # Driver + Wayland support packages
         log 'Installing nvidia-dkms, nvidia-utils, egl-wayland...'
-        $aur_helper -S --needed nvidia-dkms nvidia-utils egl-wayland $noconfirm 2>> $logfile
+        $aur_helper -S --needed nvidia-dkms nvidia-utils egl-wayland --noconfirm 2>> $logfile
 
         # Wait for DKMS to finish building the nvidia module before running mkinitcpio
         log 'Running dkms autoinstall to build nvidia kernel modules...'
@@ -663,7 +663,50 @@ else
     stty sane
 end
 
-# Install selected optional packages
+# Collect all optional packages and install in one batch
+set -l opt_pkgs
+
+if contains mpv $selected_optional
+    set -a opt_pkgs mpv mpv-mpris yt-dlp mpv-uosc mpv-thumbfast-git mpv-quality-menu-git
+end
+
+if contains spotify $selected_optional
+    set -g has_spicetify (pacman -Q spicetify-cli 2> /dev/null)
+    set -a opt_pkgs spotify spicetify-cli spicetify-marketplace-bin
+end
+
+if contains 'vscode (codium)' $selected_optional
+    set -a opt_pkgs vscodium-bin vscodium-bin-marketplace
+else if contains 'vscode (code)' $selected_optional
+    set -a opt_pkgs code
+end
+
+if contains discord $selected_optional
+    set -a opt_pkgs discord equicord-installer-bin
+end
+
+if contains zen $selected_optional
+    set -a opt_pkgs zen-browser-bin
+end
+
+if contains cursor $selected_optional
+    set -a opt_pkgs cursor-bin
+end
+
+if contains opencode $selected_optional
+    set -a opt_pkgs opencode
+end
+
+if contains claude-code $selected_optional
+    set -a opt_pkgs claude-code
+end
+
+if test (count $opt_pkgs) -gt 0
+    log 'Installing optional packages...'
+    $aur_helper -S --needed $opt_pkgs --noconfirm
+end
+
+# Configure selected optional packages
 
 # Btop
 if contains btop $selected_optional
@@ -700,10 +743,6 @@ end
 
 # Mpv
 if contains mpv $selected_optional
-    log 'Installing mpv...'
-    $aur_helper -S --needed mpv mpv-mpris yt-dlp $noconfirm
-    $aur_helper -S --needed mpv-uosc mpv-thumbfast-git mpv-quality-menu-git $noconfirm
-
     if confirm-overwrite $config/mpv
         log 'Installing mpv config...'
         mkdir -p $config/mpv/{scripts,script-opts,fonts}
@@ -729,11 +768,6 @@ end
 
 # Spotify (Spicetify)
 if contains spotify $selected_optional
-    log 'Installing spotify (spicetify)...'
-
-    set -l has_spicetify (pacman -Q spicetify-cli 2> /dev/null)
-    $aur_helper -S --needed spotify spicetify-cli spicetify-marketplace-bin $noconfirm
-
     # Set permissions and init if new install
     if test -z "$has_spicetify"
         sudo chmod a+wr /opt/spotify
@@ -755,17 +789,12 @@ end
 # VSCode / VSCodium
 if contains 'vscode (codium)' $selected_optional; or contains 'vscode (code)' $selected_optional
     set -l prog codium
-    set -l packages vscodium-bin vscodium-bin-marketplace
     set -l vsc_folder VSCodium
     if contains 'vscode (code)' $selected_optional
         set prog code
-        set packages code
         set vsc_folder Code
     end
     set -l folder $config/$vsc_folder/User
-
-    log "Installing vs$prog..."
-    $aur_helper -S --needed $packages $noconfirm
 
     # Install configs
     if confirm-overwrite $folder/settings.json && confirm-overwrite $folder/keybindings.json && confirm-overwrite $config/$prog-flags.conf
@@ -782,22 +811,16 @@ end
 
 # Discord
 if contains discord $selected_optional
-    log 'Installing discord...'
-    $aur_helper -S --needed discord equicord-installer-bin $noconfirm
-
     # Install OpenAsar and Equicord
     sudo Equilotl -install -location /opt/discord
     sudo Equilotl -install-openasar -location /opt/discord
 
     # Remove installer
-    $aur_helper -Rns equicord-installer-bin $noconfirm
+    $aur_helper -Rns equicord-installer-bin --noconfirm
 end
 
 # Zen browser
 if contains zen $selected_optional
-    log 'Installing zen...'
-    $aur_helper -S --needed zen-browser-bin $noconfirm
-
     # Set as default browser
     xdg-settings set default-web-browser zen.desktop
     for mime in text/html x-scheme-handler/http x-scheme-handler/https \
@@ -831,24 +854,6 @@ if contains zen $selected_optional
 
     # Prompt user to install extension
     log 'Please install the CaelestiaFox extension from https://addons.mozilla.org/en-US/firefox/addon/caelestiafox if you have not already done so.'
-end
-
-# Cursor
-if contains cursor $selected_optional
-    log 'Installing Cursor AI editor...'
-    $aur_helper -S --needed cursor-bin $noconfirm
-end
-
-# OpenCode
-if contains opencode $selected_optional
-    log 'Installing OpenCode...'
-    $aur_helper -S --needed opencode $noconfirm
-end
-
-# Claude Code
-if contains claude-code $selected_optional
-    log 'Installing Claude Code...'
-    $aur_helper -S --needed claude-code $noconfirm
 end
 
 # Install quickshell overrides
